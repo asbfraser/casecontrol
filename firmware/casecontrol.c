@@ -48,7 +48,6 @@ int __attribute__((noreturn)) main(void)
 
 		if(((PINB >> SWITCH0) & 1) == 0) /* Switch is pressed */
 		{
-			set_led(LED1, 1);
 			pressed = 1;
 		}
 		else
