@@ -15,7 +15,8 @@
 #define CUSTOM_RQ_TEST		2
 
 void set_led(int led, uchar value);
-uchar output = 1;
+uchar pressed = 0;
+uchar notified = 0;
 
 int __attribute__((noreturn)) main(void)
 {
@@ -48,14 +49,18 @@ int __attribute__((noreturn)) main(void)
 		if(((PINB >> SWITCH0) & 1) == 0) /* Switch is pressed */
 		{
 			set_led(LED1, 1);
+			pressed = 1;
+		}
+		else
+		{
+			pressed = 0;
+			notified = 0;
 		}
 
-		if(usbInterruptIsReady())
+		if(usbInterruptIsReady() && pressed == 1 && notified == 0)
 		{
-			if(((PINB >> SWITCH0) & 1) == 0) /* Switch is pressed */
-			{
-				usbSetInterrupt((void *) &output, 1);
-			}
+			usbSetInterrupt((void *) &pressed, 1);
+			notified = 1;
 		}
 	}
 }
