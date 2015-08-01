@@ -12,6 +12,7 @@
 
 #define CUSTOM_RQ_GET_STATUS	0
 #define CUSTOM_RQ_SET_STATUS	1
+#define CUSTOM_RQ_TEST		2
 
 void set_led(int led, uchar value);
 uchar output = 1;
@@ -44,6 +45,11 @@ int __attribute__((noreturn)) main(void)
 	{
 		usbPoll();
 
+		if(((PINB >> SWITCH0) & 1) == 0) /* Switch is pressed */
+		{
+			set_led(LED1, 1);
+		}
+
 		if(usbInterruptIsReady())
 		{
 			if(((PINB >> SWITCH0) & 1) == 0) /* Switch is pressed */
@@ -75,19 +81,30 @@ usbMsgLen_t usbFunctionSetup(uchar data[8])
 	{
 		set_led(LED0, rq->wValue.bytes[0]); /* Set LED0 */
 		set_led(LED1, rq->wValue.bytes[1]); /* Set LED1 */
+
+		dataBuffer[0] = rq->wValue.bytes[0];
+		dataBuffer[1] = rq->wValue.bytes[1];
+		usbMsgPtr = (usbMsgPtr_t) dataBuffer;         /* tell the driver which data to return */
+		return 2;
 	}
-	else if(rq->bRequest != CUSTOM_RQ_GET_STATUS)
+	else if(rq->bRequest == CUSTOM_RQ_GET_STATUS)
 	{
-		return 0;   /* default for not implemented requests: return no data back to host */
+		dataBuffer[0] = (((PINB >> SWITCH0) & 1) == 0) ? 1 : 0;
+		dataBuffer[1] = (PORTB >> LED0) & 1;
+		dataBuffer[2] = (PORTB >> LED1) & 1;
+		usbMsgPtr = (usbMsgPtr_t) dataBuffer;         /* tell the driver which data to return */
+		return 3;
+	}
+	else if(rq->bRequest == CUSTOM_RQ_TEST)
+	{
+		dataBuffer[0] = 0xde;
+		dataBuffer[1] = 0xad;
+		dataBuffer[2] = 0xbe;
+		usbMsgPtr = (usbMsgPtr_t) dataBuffer;         /* tell the driver which data to return */
+		return 3;
 	}
 
-	/* Always return status */
-
-	dataBuffer[0] = (((PINB >> SWITCH0) & 1) == 0) ? 1 : 0;
-	dataBuffer[1] = (PORTB >> LED0) & 1;
-	dataBuffer[2] = (PORTB >> LED1) & 1;
-	usbMsgPtr = (usbMsgPtr_t) dataBuffer;         /* tell the driver which data to return */
-	return 3;
+	return 0;   /* default for not implemented requests: return no data back to host */
 }
 
 #if defined(__AVR_ATtiny85__) || defined(__AVR_ATtiny45__) || defined(__AVR_ATtiny25__)
