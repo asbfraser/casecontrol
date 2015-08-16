@@ -16,11 +16,13 @@
 #define CASECONTROL_RQ_LED0	2
 #define CASECONTROL_RQ_LED1	3
 
+#define CASECONTROL_INT_TIMEOUT	1000
+
 int device_matches(libusb_device *dev, libusb_device_handle **handle);
 int control_transfer_test(libusb_device_handle *handle);
 int control_transfer_get(libusb_device_handle *handle, unsigned char *buf, int buf_len);
 int control_transfer_set(libusb_device_handle *handle, int led, int value);
-void print_dev(libusb_device *dev);
+int get_ep_addr(libusb_device *dev);
 
 void sig_handler(int signo);
 
@@ -38,9 +40,12 @@ main(int argc, char *argv[])
 {
 	libusb_device **devs;
 	libusb_context *ctx = NULL;
+	int ep_addr;
 
 	int i, ret = 0;
 	ssize_t count;
+
+	int transferred = 0;
 
 	if(signal(SIGINT, sig_handler) == SIG_ERR)
 	{
@@ -91,6 +96,12 @@ main(int argc, char *argv[])
 			continue;
 		}
 
+		if((ep_addr = get_ep_addr(devs[i])) == -1)
+		{
+			libusb_close(handle);
+			handle = NULL;
+		}
+
 		break;
 	}
 
@@ -113,7 +124,20 @@ main(int argc, char *argv[])
 	}
 
 	while(alive)
-		sleep(1);
+	{
+		if((ret = libusb_interrupt_transfer(handle, ep_addr, &(status[0]), 1, &transferred, CASECONTROL_INT_TIMEOUT)) == 0)
+			printf("SWITCH0:\t%hhu\n", status[0]);
+		else if(ret == LIBUSB_ERROR_TIMEOUT)
+			continue;
+		else
+		{
+			fprintf(stderr, "Error listening for interrupt: %d\n", ret);
+			
+			libusb_close(handle);
+			libusb_exit(ctx);
+			return 1;
+		}
+	}
 
 	libusb_close(handle);
 	libusb_exit(ctx);
@@ -284,6 +308,36 @@ sig_handler(int signo)
 		control_transfer_set(handle, led, 0);
 
 	return;
+}
+
+int
+get_ep_addr(libusb_device *dev)
+{
+	struct libusb_device_descriptor desc;
+	struct libusb_config_descriptor *config;
+
+	const struct libusb_interface *inter;
+	const struct libusb_interface_descriptor *interdesc;
+	const struct libusb_endpoint_descriptor *epdesc;
+
+	int ep_addr;
+
+	if(libusb_get_device_descriptor(dev, &desc) < 0)
+	{
+		fprintf(stderr, "Error getting device descriptor\n");
+		return -1;
+	}
+
+	libusb_get_config_descriptor(dev, 0, &config);
+
+	inter = &config->interface[0];
+	interdesc = &inter->altsetting[0];
+	epdesc = &interdesc->endpoint[0];
+	ep_addr = (int)epdesc->bEndpointAddress;
+
+	libusb_free_config_descriptor(config);
+
+	return ep_addr;
 }
 
 #if 0
