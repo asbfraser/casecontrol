@@ -1,6 +1,10 @@
 #include <stdlib.h>
 #include <stdio.h>
 #include <string.h>
+#include <unistd.h>
+#include <errno.h>
+
+#include <signal.h>
 
 #include <libusb-1.0/libusb.h>
 
@@ -18,21 +22,41 @@ int control_transfer_get(libusb_device_handle *handle, unsigned char *buf, int b
 int control_transfer_set(libusb_device_handle *handle, int led, int value);
 void print_dev(libusb_device *dev);
 
+void sig_handler(int signo);
+
 static const char test_msg[] = { 0xde, 0xad, 0xbe };
 static const int test_msg_len = 3;
 
-unsigned char status[] = { 0, 0, 0 };
-int status_len = 3;
+static libusb_device_handle *handle = NULL;
+static unsigned char status[] = { 0, 0, 0 };
+static int status_len = 3;
+
+static char alive = 1;
 
 int
 main(int argc, char *argv[])
 {
 	libusb_device **devs;
 	libusb_context *ctx = NULL;
-	libusb_device_handle *handle = NULL;
 
 	int i, ret = 0;
 	ssize_t count;
+
+	if(signal(SIGINT, sig_handler) == SIG_ERR)
+	{
+		fprintf(stderr, "Error installing signal handler for SIGINT: %s\n", strerror(errno));
+		return 1;
+	}
+	if(signal(SIGUSR1, sig_handler) == SIG_ERR)
+	{
+		fprintf(stderr, "Error installing signal handler for SIGUSR1: %s\n", strerror(errno));
+		return 1;
+	}
+	if(signal(SIGUSR2, sig_handler) == SIG_ERR)
+	{
+		fprintf(stderr, "Error installing signal handler for SIGUSR1: %s\n", strerror(errno));
+		return 1;
+	}
 
 	if(libusb_init(&ctx) < 0)
 	{
@@ -94,6 +118,9 @@ main(int argc, char *argv[])
 	control_transfer_set(handle, 1, 0);
 
 	control_transfer_get(handle, status, status_len);
+
+	while(alive)
+		sleep(1);
 
 	libusb_close(handle);
 	libusb_exit(ctx);
@@ -205,6 +232,7 @@ int
 control_transfer_set(libusb_device_handle *handle, int led, int value)
 {
 	int rq, len;
+	unsigned char ret[1];
 
 	if(handle == NULL)
 		return -1;
@@ -219,11 +247,16 @@ control_transfer_set(libusb_device_handle *handle, int led, int value)
 		return -1;
 	}
 
-	if((len = libusb_control_transfer(handle, CASECONTROL_REQUESTTYPE, rq, value, 0, NULL, 0, 0)) < 0)
+	if((len = libusb_control_transfer(handle, CASECONTROL_REQUESTTYPE, rq, value, 0, ret, 1, 0)) < 0)
 	{
 		fprintf(stderr, "Error making control transfer: %d\n", len);
 		return -1;
 	}
+
+	if(len != 1)
+		return -1;
+
+	status[led + 1] = ret[0];
 
 	return 0;
 }
@@ -279,4 +312,33 @@ print_dev(libusb_device *dev)
 	}
 
 	libusb_free_config_descriptor(config);
+}
+
+void
+sig_handler(int signo)
+{
+	int led;
+
+	if(signo == SIGUSR1)
+		led = 0;
+	else if(signo == SIGUSR2)
+		led = 1;
+	else if(signo == SIGINT)
+	{
+		alive = 0;
+		fprintf(stderr, "Interrupted!\n");
+		return;
+	}
+	else
+		return;
+
+	if(handle == NULL)
+		return;
+
+	if(status[led + 1] == 0)
+		control_transfer_set(handle, led, 1);
+	else
+		control_transfer_set(handle, led, 0);
+
+	return;
 }
