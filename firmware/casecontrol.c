@@ -11,8 +11,9 @@
 #define LED1	2
 
 #define CUSTOM_RQ_GET_STATUS	0
-#define CUSTOM_RQ_SET_STATUS	1
-#define CUSTOM_RQ_TEST		2
+#define CUSTOM_RQ_TEST		1
+#define CUSTOM_RQ_SET_LED0	2
+#define CUSTOM_RQ_SET_LED1	3
 
 void set_led(int led, uchar value);
 uchar pressed = 0;
@@ -81,15 +82,21 @@ usbMsgLen_t usbFunctionSetup(uchar data[8])
 	usbRequest_t *rq = (void *)data;
 	static uchar dataBuffer[3];  /* buffer must stay valid when usbFunctionSetup returns */
 
-	if(rq->bRequest == CUSTOM_RQ_SET_STATUS)
+	if(rq->bRequest == CUSTOM_RQ_SET_LED0)
 	{
 		set_led(LED0, rq->wValue.bytes[0]); /* Set LED0 */
-		set_led(LED1, rq->wValue.bytes[1]); /* Set LED1 */
 
 		dataBuffer[0] = rq->wValue.bytes[0];
-		dataBuffer[1] = rq->wValue.bytes[1];
 		usbMsgPtr = (usbMsgPtr_t) dataBuffer;         /* tell the driver which data to return */
-		return 2;
+		return 1;
+	}
+	else if(rq->bRequest == CUSTOM_RQ_SET_LED1)
+	{
+		set_led(LED1, rq->wValue.bytes[0]); /* Set LED1 */
+
+		dataBuffer[0] = rq->wValue.bytes[0];
+		usbMsgPtr = (usbMsgPtr_t) dataBuffer;         /* tell the driver which data to return */
+		return 1;
 	}
 	else if(rq->bRequest == CUSTOM_RQ_GET_STATUS)
 	{
