@@ -49,18 +49,24 @@ int __attribute__((noreturn)) main(void)
 
 		if(((PINB >> SWITCH0) & 1) == 0) /* Switch is pressed */
 		{
+			if(pressed == 0)
+				notified = 0;
 			pressed = 1;
 		}
-		else
+		else if(pressed != 1 || notified != 0) /* If a press notification is pending, don't unpress switch */
 		{
+			if(pressed == 1)
+				notified = 0;
 			pressed = 0;
-			notified = 0;
 		}
 
-		if(usbInterruptIsReady() && pressed == 1 && notified == 0)
+		if(usbInterruptIsReady())
 		{
-			usbSetInterrupt((void *) &pressed, 1);
-			notified = 1;
+			if(notified == 0)
+			{
+				usbSetInterrupt((void *) &pressed, 1);
+				notified = 1;
+			}
 		}
 	}
 }
