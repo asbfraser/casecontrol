@@ -73,8 +73,6 @@ main(int argc, char *argv[])
 		return 1;
 	}
 
-	printf("%d devices in list\n", (int) count);
-
 	for(i = 0; i < count; ++i)
 	{
 		if(device_matches(devs[i], &handle) != 0)
@@ -88,15 +86,10 @@ main(int argc, char *argv[])
 		}
 		else if(ret == 1)
 		{
-			printf("Device %d failed transfer test...\n", i);
 			libusb_close(handle);
 			handle = NULL;
 			continue;
 		}
-
-		printf("Device %d:\n", i);
-		
-		print_dev(devs[i]);
 
 		break;
 	}
@@ -110,20 +103,22 @@ main(int argc, char *argv[])
 		return 1;
 	}
 
-	printf("Compatible device found!\n");
+	fprintf(stderr, "Compatible device found!\n");
 
-	control_transfer_get(handle, status, status_len);
-
-	control_transfer_set(handle, 0, 1);
-	control_transfer_set(handle, 1, 0);
-
-	control_transfer_get(handle, status, status_len);
+	if(control_transfer_get(handle, status, status_len) != 0)
+	{
+		libusb_close(handle);
+		libusb_exit(ctx);
+		return 1;
+	}
 
 	while(alive)
 		sleep(1);
 
 	libusb_close(handle);
 	libusb_exit(ctx);
+
+	fprintf(stderr, "Exiting\n");
 
 	return 0;
 }
@@ -258,9 +253,40 @@ control_transfer_set(libusb_device_handle *handle, int led, int value)
 
 	status[led + 1] = ret[0];
 
+	printf("LED%d:\t\t%hhu\n", led, ret[0]);
+
 	return 0;
 }
 
+void
+sig_handler(int signo)
+{
+	int led;
+
+	if(signo == SIGUSR1)
+		led = 0;
+	else if(signo == SIGUSR2)
+		led = 1;
+	else if(signo == SIGINT)
+	{
+		alive = 0;
+		return;
+	}
+	else
+		return;
+
+	if(handle == NULL)
+		return;
+
+	if(status[led + 1] == 0)
+		control_transfer_set(handle, led, 1);
+	else
+		control_transfer_set(handle, led, 0);
+
+	return;
+}
+
+#if 0
 void
 print_dev(libusb_device *dev)
 {
@@ -313,32 +339,4 @@ print_dev(libusb_device *dev)
 
 	libusb_free_config_descriptor(config);
 }
-
-void
-sig_handler(int signo)
-{
-	int led;
-
-	if(signo == SIGUSR1)
-		led = 0;
-	else if(signo == SIGUSR2)
-		led = 1;
-	else if(signo == SIGINT)
-	{
-		alive = 0;
-		fprintf(stderr, "Interrupted!\n");
-		return;
-	}
-	else
-		return;
-
-	if(handle == NULL)
-		return;
-
-	if(status[led + 1] == 0)
-		control_transfer_set(handle, led, 1);
-	else
-		control_transfer_set(handle, led, 0);
-
-	return;
-}
+#endif
