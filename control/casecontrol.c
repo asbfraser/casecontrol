@@ -1,22 +1,4 @@
-#include <stdlib.h>
-#include <stdio.h>
-#include <string.h>
-#include <unistd.h>
-#include <errno.h>
-
-#include <signal.h>
-
-#include <libusb-1.0/libusb.h>
-
-#define CASECONTROL_VID		0x1781
-#define CASECONTROL_PID		0x1111
-#define CASECONTROL_REQUESTTYPE	(1 << 7) | (1 << 6)
-#define CASECONTROL_RQ_GET	0
-#define CASECONTROL_RQ_TEST	1
-#define CASECONTROL_RQ_LED0	2
-#define CASECONTROL_RQ_LED1	3
-
-#define CASECONTROL_INT_TIMEOUT	1000
+#include "casecontrol.h"
 
 int device_matches(libusb_device *dev, libusb_device_handle **handle);
 int control_transfer_test(libusb_device_handle *handle);
@@ -25,6 +7,7 @@ int control_transfer_set(libusb_device_handle *handle, int led, int value);
 int get_ep_addr(libusb_device *dev);
 
 void sig_handler(int signo);
+int call_scripts();
 
 static const char test_msg[] = { 0xde, 0xad, 0xbe };
 static const int test_msg_len = 3;
@@ -33,6 +16,7 @@ static libusb_device_handle *handle = NULL;
 static unsigned char status[] = { 0, 0, 0 };
 static int status_len = 3;
 
+static char primed = 0;
 static char alive = 1;
 
 int
@@ -47,25 +31,31 @@ main(int argc, char *argv[])
 
 	int transferred = 0;
 
+	openlog(CASECONTROL_LOG_IDENT, LOG_PID, LOG_USER);
+
 	if(signal(SIGINT, sig_handler) == SIG_ERR)
 	{
-		fprintf(stderr, "Error installing signal handler for SIGINT: %s\n", strerror(errno));
+		syslog(LOG_ERR, "Error installing signal handler for SIGINT: %s", strerror(errno));
+		closelog();
 		return 1;
 	}
 	if(signal(SIGUSR1, sig_handler) == SIG_ERR)
 	{
-		fprintf(stderr, "Error installing signal handler for SIGUSR1: %s\n", strerror(errno));
+		syslog(LOG_ERR, "Error installing signal handler for SIGUSR1: %s", strerror(errno));
+		closelog();
 		return 1;
 	}
 	if(signal(SIGUSR2, sig_handler) == SIG_ERR)
 	{
-		fprintf(stderr, "Error installing signal handler for SIGUSR1: %s\n", strerror(errno));
+		syslog(LOG_ERR, "Error installing signal handler for SIGUSR1: %s", strerror(errno));
+		closelog();
 		return 1;
 	}
 
 	if(libusb_init(&ctx) < 0)
 	{
-		fprintf(stderr, "Error initialising libusb\n");
+		syslog(LOG_ERR, "Error initialising libusb");
+		closelog();
 		return 1;
 	}
 
@@ -73,8 +63,9 @@ main(int argc, char *argv[])
 
 	if((count = libusb_get_device_list(ctx, &devs)) < 0)
 	{
-		fprintf(stderr, "Error getting device list: %d\n", (int) count);
+		syslog(LOG_ERR, "Error getting device list: %d", (int) count);
 		libusb_exit(ctx);
+		closelog();
 		return 1;
 	}
 
@@ -109,32 +100,42 @@ main(int argc, char *argv[])
 
 	if(handle == NULL)
 	{
-		fprintf(stderr, "No compatible devices found\n");
+		syslog(LOG_ERR, "No compatible devices found");
 		libusb_exit(ctx);
+		closelog();
 		return 1;
 	}
 
-	fprintf(stderr, "Compatible device found!\n");
+	syslog(LOG_ERR, "Compatible device found!");
 
 	if(control_transfer_get(handle, status, status_len) != 0)
 	{
 		libusb_close(handle);
 		libusb_exit(ctx);
+		closelog();
 		return 1;
 	}
 
 	while(alive)
 	{
 		if((ret = libusb_interrupt_transfer(handle, ep_addr, &(status[0]), 1, &transferred, CASECONTROL_INT_TIMEOUT)) == 0)
-			printf("SWITCH0:\t%hhu\n", status[0]);
+		{
+			syslog(LOG_INFO, "SWITCH0: %hhu", status[0]);
+
+			if(status[0] == 1 && primed == 1)
+				call_scripts();
+			else if(status[0] == 0)
+				primed = 1;
+		}
 		else if(ret == LIBUSB_ERROR_TIMEOUT)
 			continue;
 		else
 		{
-			fprintf(stderr, "Error listening for interrupt: %d\n", ret);
+			syslog(LOG_ERR, "Error listening for interrupt: %d", ret);
 			
 			libusb_close(handle);
 			libusb_exit(ctx);
+			closelog();
 			return 1;
 		}
 	}
@@ -142,8 +143,9 @@ main(int argc, char *argv[])
 	libusb_close(handle);
 	libusb_exit(ctx);
 
-	fprintf(stderr, "Exiting\n");
+	syslog(LOG_ERR, "Exiting");
 
+	closelog();
 	return 0;
 }
 
@@ -160,7 +162,7 @@ device_matches(libusb_device *dev, libusb_device_handle **handle)
 
 	if((ret = libusb_get_device_descriptor(dev, &desc)) != 0)
 	{
-		fprintf(stderr, "Error getting device descriptor: %d\n", ret);
+		syslog(LOG_ERR, "Error getting device descriptor: %d", ret);
 		return 1;
 	}
 
@@ -169,7 +171,7 @@ device_matches(libusb_device *dev, libusb_device_handle **handle)
 
 	if((ret = libusb_open(dev, handle)) != 0)
 	{
-		fprintf(stderr, "Error opening device: %d\n", ret);
+		syslog(LOG_ERR, "Error opening device: %d", ret);
 		*handle = NULL;
 		return 1;
 	}
@@ -178,11 +180,11 @@ device_matches(libusb_device *dev, libusb_device_handle **handle)
 	{
 		if(ret == 1)
 		{
-			fprintf(stderr, "Kernel driver active, detaching.\n");
+			syslog(LOG_ERR, "Kernel driver active, detaching.");
 
 			if((ret = libusb_detach_kernel_driver(*handle, 0)) != 0)
 			{
-				fprintf(stderr, "Error detaching kernel driver: %d\n", ret);
+				syslog(LOG_ERR, "Error detaching kernel driver: %d", ret);
 				libusb_close(*handle);
 				*handle = NULL;
 				return 1;
@@ -190,7 +192,7 @@ device_matches(libusb_device *dev, libusb_device_handle **handle)
 		}
 		else
 		{
-			fprintf(stderr, "Error checking if kernel driver is attached: %d\n", ret);
+			syslog(LOG_ERR, "Error checking if kernel driver is attached: %d", ret);
 			libusb_close(*handle);
 			*handle = NULL;
 			return 1;
@@ -211,7 +213,7 @@ control_transfer_test(libusb_device_handle *handle)
 
 	if((len = libusb_control_transfer(handle, CASECONTROL_REQUESTTYPE, CASECONTROL_RQ_TEST, 0, 0, buf, test_msg_len, 0)) < 0)
 	{
-		fprintf(stderr, "Error making control transfer: %d\n", len);
+		syslog(LOG_ERR, "Error making control transfer: %d", len);
 		return -1;
 	}
 
@@ -233,16 +235,18 @@ control_transfer_get(libusb_device_handle *handle, unsigned char *buf, int buf_l
 
 	if((len = libusb_control_transfer(handle, CASECONTROL_REQUESTTYPE, CASECONTROL_RQ_GET, 0, 0, buf, buf_len, 0)) < 0)
 	{
-		fprintf(stderr, "Error making control transfer: %d\n", len);
+		syslog(LOG_ERR, "Error making control transfer: %d", len);
 		return -1;
 	}
 
 	if(len < buf_len)
 		return 1;
 
-	printf("SWITCH0:\t%hhu\n", status[0]);
+	if(status[0] == 0)
+		primed = 1;
+	syslog(LOG_INFO, "SWITCH0: %hhu", status[0]);
 	for(i = 1; i < status_len; ++i)
-		printf("LED%d:\t\t%hhu\n", i - 1, status[i]);
+		syslog(LOG_INFO, "LED%d: %hhu", i - 1, status[i]);
 
 	return 0;
 }
@@ -262,13 +266,13 @@ control_transfer_set(libusb_device_handle *handle, int led, int value)
 		rq = CASECONTROL_RQ_LED1;
 	else
 	{
-		fprintf(stderr, "Invalid LED number\n");
+		syslog(LOG_ERR, "Invalid LED number");
 		return -1;
 	}
 
 	if((len = libusb_control_transfer(handle, CASECONTROL_REQUESTTYPE, rq, value, 0, ret, 1, 0)) < 0)
 	{
-		fprintf(stderr, "Error making control transfer: %d\n", len);
+		syslog(LOG_ERR, "Error making control transfer: %d", len);
 		return -1;
 	}
 
@@ -277,7 +281,7 @@ control_transfer_set(libusb_device_handle *handle, int led, int value)
 
 	status[led + 1] = ret[0];
 
-	printf("LED%d:\t\t%hhu\n", led, ret[0]);
+	syslog(LOG_INFO, "LED%d: %hhu", led, ret[0]);
 
 	return 0;
 }
@@ -324,7 +328,7 @@ get_ep_addr(libusb_device *dev)
 
 	if(libusb_get_device_descriptor(dev, &desc) < 0)
 	{
-		fprintf(stderr, "Error getting device descriptor\n");
+		syslog(LOG_ERR, "Error getting device descriptor");
 		return -1;
 	}
 
@@ -338,6 +342,56 @@ get_ep_addr(libusb_device *dev)
 	libusb_free_config_descriptor(config);
 
 	return ep_addr;
+}
+
+int
+call_scripts()
+{
+	struct dirent **dirs;
+	int num_dirs, i;
+	int pid, status;
+	char path[PATH_MAX];
+
+	if((num_dirs = scandir(CASECONTROL_SCRIPT_DIR, &dirs, NULL, alphasort)) == -1)
+	{
+		syslog(LOG_ERR, "scandir(%s): %s", CASECONTROL_SCRIPT_DIR, strerror(errno));
+		return -1;
+	}
+
+	for(i = 0; i < num_dirs; ++i)
+	{
+		if(dirs[i]->d_type == DT_DIR)
+			continue;
+
+		snprintf(path, PATH_MAX - 1, "%s/%s", CASECONTROL_SCRIPT_DIR, dirs[i]->d_name);
+		free(dirs[i]);
+
+		syslog(LOG_INFO, "Executing \"%s\"", path);
+
+		if((pid = fork()) == -1)
+		{
+			syslog(LOG_ERR, "fork(): %s", strerror(errno));
+			continue;
+		}
+		else if(pid == 0)
+		{
+			execlp("/bin/sh", "/bin/sh", path, NULL);
+		}
+		wait(&status);
+
+		if(status == 0)
+		{
+			syslog(LOG_INFO, "Executed \"%s\": SUCCESS", path);
+		}
+		else
+		{
+			syslog(LOG_ERR, "Executed \"%s\": FAILURE (%d)", path, status);
+		}
+	}
+
+	free(dirs);
+
+	return 0;
 }
 
 #if 0

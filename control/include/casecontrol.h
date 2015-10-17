@@ -17,6 +17,8 @@
 #define CASECONTROL_SCRIPT_DIR "/etc/casecontrol/casecontrol.d"
 #endif
 
+#define CASECONTROL_LOG_IDENT	"CASECONTROL"
+
 #define SUCCESS	"\033[0;32mSUCCESS\033[0m"
 #define FAILURE	"\033[0;31mFAILURE\033[0m"
 
@@ -29,6 +31,7 @@
 #include <signal.h>
 #include <dirent.h>
 #include <sys/wait.h>
+#include <syslog.h>
 
 #include <libusb-1.0/libusb.h>
 
