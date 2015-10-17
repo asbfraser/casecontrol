@@ -161,7 +161,8 @@ int
 daemonise()
 {
 	pid_t pid;
-	int i;
+	int i, fd, len;
+	char buf[10];
 
 	openlog(CASECONTROL_LOG_IDENT, LOG_PID, LOG_USER);
 
@@ -173,6 +174,15 @@ daemonise()
 	else if(pid != 0)
 	{
 		syslog(LOG_INFO, "Daemon PID: %d", pid);
+
+		if((fd = open(CASECONTROL_PID_FILE, O_CREAT | O_WRONLY, 00444)) == -1)
+			syslog(LOG_ERR, "open(): %m");
+
+		len = snprintf(buf, 9, "%d", pid);
+		if(write(fd, buf, len) == -1)
+			syslog(LOG_ERR, "write(): %m");
+		close(fd); 
+
 		closelog();
 		exit(0);
 	}
