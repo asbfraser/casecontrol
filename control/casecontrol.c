@@ -7,6 +7,7 @@ int control_transfer_set(libusb_device_handle *handle, int led, int value);
 int get_ep_addr(libusb_device *dev);
 
 int daemonise();
+void cleanup();
 void sig_handler(int signo);
 void call_scripts(char *script_dir, unsigned char value);
 
@@ -33,7 +34,10 @@ main(int argc, char *argv[])
 	int transferred = 0;
 
 	if(daemonise() == -1)
+	{
+		cleanup();
 		return 1;
+	}
 
 	openlog(CASECONTROL_LOG_IDENT, LOG_PID, LOG_USER);
 
@@ -41,18 +45,21 @@ main(int argc, char *argv[])
 	{
 		syslog(LOG_ERR, "Error installing signal handler for SIGINT: %s", strerror(errno));
 		closelog();
+		cleanup();
 		return 1;
 	}
 	if(signal(SIGUSR1, sig_handler) == SIG_ERR)
 	{
 		syslog(LOG_ERR, "Error installing signal handler for SIGUSR1: %s", strerror(errno));
 		closelog();
+		cleanup();
 		return 1;
 	}
 	if(signal(SIGUSR2, sig_handler) == SIG_ERR)
 	{
 		syslog(LOG_ERR, "Error installing signal handler for SIGUSR1: %s", strerror(errno));
 		closelog();
+		cleanup();
 		return 1;
 	}
 
@@ -60,6 +67,7 @@ main(int argc, char *argv[])
 	{
 		syslog(LOG_ERR, "Error initialising libusb");
 		closelog();
+		cleanup();
 		return 1;
 	}
 
@@ -70,6 +78,7 @@ main(int argc, char *argv[])
 		syslog(LOG_ERR, "Error getting device list: %d", (int) count);
 		libusb_exit(ctx);
 		closelog();
+		cleanup();
 		return 1;
 	}
 
@@ -107,6 +116,7 @@ main(int argc, char *argv[])
 		syslog(LOG_ERR, "No compatible devices found");
 		libusb_exit(ctx);
 		closelog();
+		cleanup();
 		return 1;
 	}
 
@@ -117,6 +127,7 @@ main(int argc, char *argv[])
 		libusb_close(handle);
 		libusb_exit(ctx);
 		closelog();
+		cleanup();
 		return 1;
 	}
 
@@ -144,6 +155,7 @@ main(int argc, char *argv[])
 			libusb_close(handle);
 			libusb_exit(ctx);
 			closelog();
+			cleanup();
 			return 1;
 		}
 	}
@@ -154,6 +166,7 @@ main(int argc, char *argv[])
 	syslog(LOG_ERR, "Exiting");
 
 	closelog();
+	cleanup();
 	return 0;
 }
 
@@ -209,6 +222,12 @@ daemonise()
 	dup(0); // stderr
 
 	return 0;
+}
+
+void
+cleanup()
+{
+	unlink(CASECONTROL_PID_FILE);
 }
 
 int
