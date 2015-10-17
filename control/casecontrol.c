@@ -16,6 +16,7 @@ static libusb_device_handle *handle = NULL;
 static unsigned char status[] = { 0, 0, 0 };
 static int status_len = 3;
 
+static unsigned char req_status[] = { 0, 0 };
 static char alive = 1;
 
 int
@@ -115,8 +116,16 @@ main(int argc, char *argv[])
 		return 1;
 	}
 
+	req_status[0] = status[1];
+	req_status[1] = status[2];
+
 	while(alive)
 	{
+		if(req_status[0] != status[1])
+			control_transfer_set(handle, 0, req_status[0]);
+		if(req_status[1] != status[2])
+			control_transfer_set(handle, 1, req_status[1]);
+
 		if((ret = libusb_interrupt_transfer(handle, ep_addr, &(status[0]), 1, &transferred, CASECONTROL_INT_TIMEOUT)) == 0)
 		{
 			syslog(LOG_INFO, "SWITCH0: %hhu", status[0]);
@@ -313,9 +322,9 @@ sig_handler(int signo)
 		return;
 
 	if(status[led + 1] == 0)
-		control_transfer_set(handle, led, 1);
+		req_status[led] = 1;
 	else
-		control_transfer_set(handle, led, 0);
+		req_status[led] = 0;
 
 	return;
 }
