@@ -13,16 +13,28 @@
 
 #define CASECONTROL_INT_TIMEOUT	1000
 
+#ifndef CASECONTROL_PREFIX
+#define CASECONTROL_PREFIX	"/etc/casecontrol"
+#endif
+
+#ifndef CASECONTROL_RUNDIR
+#define CASECONTROL_RUNDIR	"/var/run/casecontrol"
+#endif
+
+#ifndef CASECONTROL_PID_FILE
+#define CASECONTROL_PID_FILE	CASECONTROL_RUNDIR "/pid"
+#endif
+
 #ifndef CASECONTROL_SWITCH0_SCRIPT_DIR
-#define CASECONTROL_SWITCH0_SCRIPT_DIR "/etc/casecontrol/switch0.d"
+#define CASECONTROL_SWITCH0_SCRIPT_DIR CASECONTROL_PREFIX "/switch0.d"
 #endif
 
 #ifndef CASECONTROL_LED0_SCRIPT_DIR
-#define CASECONTROL_LED0_SCRIPT_DIR "/etc/casecontrol/led0.d"
+#define CASECONTROL_LED0_SCRIPT_DIR CASECONTROL_PREFIX "/led0.d"
 #endif
 
 #ifndef CASECONTROL_LED1_SCRIPT_DIR
-#define CASECONTROL_LED1_SCRIPT_DIR "/etc/casecontrol/led1.d"
+#define CASECONTROL_LED1_SCRIPT_DIR CASECONTROL_PREFIX "/led1.d"
 #endif
 
 #define CASECONTROL_LOG_IDENT	"CASECONTROL"
@@ -35,6 +47,8 @@
 #include <string.h>
 #include <unistd.h>
 #include <errno.h>
+#include <fcntl.h>
+#include <linux/limits.h>
 
 #include <signal.h>
 #include <dirent.h>

@@ -6,6 +6,7 @@ int control_transfer_get(libusb_device_handle *handle, unsigned char *buf, int b
 int control_transfer_set(libusb_device_handle *handle, int led, int value);
 int get_ep_addr(libusb_device *dev);
 
+int daemonise();
 void sig_handler(int signo);
 void call_scripts(char *script_dir, unsigned char value);
 
@@ -30,6 +31,9 @@ main(int argc, char *argv[])
 	ssize_t count;
 
 	int transferred = 0;
+
+	if(daemonise() == -1)
+		return 1;
 
 	openlog(CASECONTROL_LOG_IDENT, LOG_PID, LOG_USER);
 
@@ -106,7 +110,7 @@ main(int argc, char *argv[])
 		return 1;
 	}
 
-	syslog(LOG_ERR, "Compatible device found!");
+	syslog(LOG_INFO, "Compatible device found!");
 
 	if(control_transfer_get(handle, status, status_len) != 0)
 	{
@@ -150,6 +154,50 @@ main(int argc, char *argv[])
 	syslog(LOG_ERR, "Exiting");
 
 	closelog();
+	return 0;
+}
+
+int
+daemonise()
+{
+	pid_t pid;
+	int i;
+
+	openlog(CASECONTROL_LOG_IDENT, LOG_PID, LOG_USER);
+
+	if((pid = fork()) == -1)
+	{
+		syslog(LOG_ERR, "fork(): %m");
+		return -1;
+	}
+	else if(pid != 0)
+	{
+		syslog(LOG_INFO, "Daemon PID: %d", pid);
+		closelog();
+		exit(0);
+	}
+
+	if(setsid() == -1)
+	{
+		syslog(LOG_ERR, "setsid(): %m");
+		return -1;
+	}
+
+	if(chdir(CASECONTROL_RUNDIR) == -1)
+	{
+		syslog(LOG_ERR, "chdir(): %m");
+		return -1;
+	}
+
+	closelog();
+
+	for(i = 0; i < NR_OPEN; ++i)
+		close(i);
+
+	open("/dev/null", O_RDWR); // stdin
+	dup(0); // stdout
+	dup(0); // stderr
+
 	return 0;
 }
 
