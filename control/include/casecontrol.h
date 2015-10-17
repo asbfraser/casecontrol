@@ -13,8 +13,16 @@
 
 #define CASECONTROL_INT_TIMEOUT	1000
 
-#ifndef CASECONTROL_SCRIPT_DIR
-#define CASECONTROL_SCRIPT_DIR "/etc/casecontrol/casecontrol.d"
+#ifndef CASECONTROL_SWITCH0_SCRIPT_DIR
+#define CASECONTROL_SWITCH0_SCRIPT_DIR "/etc/casecontrol/switch0.d"
+#endif
+
+#ifndef CASECONTROL_LED0_SCRIPT_DIR
+#define CASECONTROL_LED0_SCRIPT_DIR "/etc/casecontrol/led0.d"
+#endif
+
+#ifndef CASECONTROL_LED1_SCRIPT_DIR
+#define CASECONTROL_LED1_SCRIPT_DIR "/etc/casecontrol/led1.d"
 #endif
 
 #define CASECONTROL_LOG_IDENT	"CASECONTROL"

@@ -7,7 +7,7 @@ int control_transfer_set(libusb_device_handle *handle, int led, int value);
 int get_ep_addr(libusb_device *dev);
 
 void sig_handler(int signo);
-int call_scripts();
+void call_scripts(char *script_dir, unsigned char value);
 
 static const char test_msg[] = { 0xde, 0xad, 0xbe };
 static const int test_msg_len = 3;
@@ -16,7 +16,6 @@ static libusb_device_handle *handle = NULL;
 static unsigned char status[] = { 0, 0, 0 };
 static int status_len = 3;
 
-static char primed = 0;
 static char alive = 1;
 
 int
@@ -121,11 +120,7 @@ main(int argc, char *argv[])
 		if((ret = libusb_interrupt_transfer(handle, ep_addr, &(status[0]), 1, &transferred, CASECONTROL_INT_TIMEOUT)) == 0)
 		{
 			syslog(LOG_INFO, "SWITCH0: %hhu", status[0]);
-
-			if(status[0] == 1 && primed == 1)
-				call_scripts();
-			else if(status[0] == 0)
-				primed = 1;
+			call_scripts(CASECONTROL_SWITCH0_SCRIPT_DIR, status[0]);
 		}
 		else if(ret == LIBUSB_ERROR_TIMEOUT)
 			continue;
@@ -242,11 +237,17 @@ control_transfer_get(libusb_device_handle *handle, unsigned char *buf, int buf_l
 	if(len < buf_len)
 		return 1;
 
-	if(status[0] == 0)
-		primed = 1;
 	syslog(LOG_INFO, "SWITCH0: %hhu", status[0]);
+	call_scripts(CASECONTROL_SWITCH0_SCRIPT_DIR, status[0]);
+
 	for(i = 1; i < status_len; ++i)
+	{
 		syslog(LOG_INFO, "LED%d: %hhu", i - 1, status[i]);
+		if(i - 1 == 0)
+			call_scripts(CASECONTROL_LED0_SCRIPT_DIR, status[i]);
+		else if(i - 1 == 1)
+			call_scripts(CASECONTROL_LED1_SCRIPT_DIR, status[i]);
+	}
 
 	return 0;
 }
@@ -282,6 +283,11 @@ control_transfer_set(libusb_device_handle *handle, int led, int value)
 	status[led + 1] = ret[0];
 
 	syslog(LOG_INFO, "LED%d: %hhu", led, ret[0]);
+
+	if(led == 0)
+		call_scripts(CASECONTROL_LED0_SCRIPT_DIR, ret[0]);
+	else
+		call_scripts(CASECONTROL_LED1_SCRIPT_DIR, ret[0]);
 
 	return 0;
 }
@@ -344,18 +350,25 @@ get_ep_addr(libusb_device *dev)
 	return ep_addr;
 }
 
-int
-call_scripts()
+void
+call_scripts(char *script_dir, unsigned char value)
 {
 	struct dirent **dirs;
 	int num_dirs, i;
 	int pid, status;
 	char path[PATH_MAX];
 
-	if((num_dirs = scandir(CASECONTROL_SCRIPT_DIR, &dirs, NULL, alphasort)) == -1)
+	char val_str[2];
+
+	if(value == 0)
+		snprintf(val_str, 2, "0");
+	else
+		snprintf(val_str, 2, "1");
+
+	if((num_dirs = scandir(script_dir, &dirs, NULL, alphasort)) == -1)
 	{
-		syslog(LOG_ERR, "scandir(%s): %s", CASECONTROL_SCRIPT_DIR, strerror(errno));
-		return -1;
+		syslog(LOG_ERR, "scandir(%s): %s", script_dir, strerror(errno));
+		return;
 	}
 
 	for(i = 0; i < num_dirs; ++i)
@@ -363,7 +376,7 @@ call_scripts()
 		if(dirs[i]->d_type == DT_DIR)
 			continue;
 
-		snprintf(path, PATH_MAX - 1, "%s/%s", CASECONTROL_SCRIPT_DIR, dirs[i]->d_name);
+		snprintf(path, PATH_MAX - 1, "%s/%s", script_dir, dirs[i]->d_name);
 		free(dirs[i]);
 
 		syslog(LOG_INFO, "Executing \"%s\"", path);
@@ -375,7 +388,7 @@ call_scripts()
 		}
 		else if(pid == 0)
 		{
-			execlp("/bin/sh", "/bin/sh", path, NULL);
+			execlp("/bin/sh", "/bin/sh", path, val_str, NULL);
 		}
 		wait(&status);
 
@@ -391,7 +404,7 @@ call_scripts()
 
 	free(dirs);
 
-	return 0;
+	return;
 }
 
 #if 0
