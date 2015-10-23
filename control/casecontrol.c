@@ -5,6 +5,7 @@ int control_transfer_test(libusb_device_handle *handle);
 int control_transfer_get(libusb_device_handle *handle, unsigned char *buf, int buf_len);
 int control_transfer_set(libusb_device_handle *handle, int led, int value);
 int get_ep_addr(libusb_device *dev);
+int connect_device(libusb_context *ctx);
 
 int daemonise();
 void cleanup();
@@ -20,18 +21,13 @@ static int status_len = 3;
 
 static unsigned char req_status[] = { 0, 0 };
 static char alive = 1;
+static char started = 0;
 
 int
 main(int argc, char *argv[])
 {
-	libusb_device **devs;
 	libusb_context *ctx = NULL;
-	int ep_addr;
-
-	int i, ret = 0;
-	ssize_t count;
-
-	int transferred = 0;
+	int ret;
 
 	if(daemonise() == -1)
 	{
@@ -73,13 +69,43 @@ main(int argc, char *argv[])
 
 	libusb_set_debug(ctx, 3);
 
+	do
+	{
+		if((ret = connect_device(ctx)) == -1)
+		{
+			alive = 0;
+		}
+		else if(ret == -2)
+		{
+			sleep(5);
+		}
+	}
+	while(alive);
+
+	syslog(LOG_INFO, "Exiting...");
+
+	libusb_exit(ctx);
+	closelog();
+	cleanup();
+
+	return ret;
+}
+
+int
+connect_device(libusb_context *ctx)
+{
+	libusb_device **devs;
+	int ep_addr;
+
+	int i, ret = 0;
+	ssize_t count;
+
+	int transferred = 0;
+
 	if((count = libusb_get_device_list(ctx, &devs)) < 0)
 	{
 		syslog(LOG_ERR, "Error getting device list: %d", (int) count);
-		libusb_exit(ctx);
-		closelog();
-		cleanup();
-		return 1;
+		return -1;
 	}
 
 	for(i = 0; i < count; ++i)
@@ -113,22 +139,19 @@ main(int argc, char *argv[])
 
 	if(handle == NULL)
 	{
-		syslog(LOG_ERR, "No compatible devices found");
-		libusb_exit(ctx);
-		closelog();
-		cleanup();
-		return 1;
+		if(started == 0)
+			syslog(LOG_ERR, "No compatible devices found");
+		started = 1;
+		return -2;
 	}
 
 	syslog(LOG_INFO, "Compatible device found!");
+	started = 1;
 
 	if(control_transfer_get(handle, status, status_len) != 0)
 	{
 		libusb_close(handle);
-		libusb_exit(ctx);
-		closelog();
-		cleanup();
-		return 1;
+		return -1;
 	}
 
 	req_status[0] = status[1];
@@ -148,25 +171,22 @@ main(int argc, char *argv[])
 		}
 		else if(ret == LIBUSB_ERROR_TIMEOUT)
 			continue;
+		else if(ret == LIBUSB_ERROR_NO_DEVICE)
+		{
+			syslog(LOG_INFO, "Device disconnected");
+			libusb_close(handle);
+			return -2;
+		}
 		else
 		{
 			syslog(LOG_ERR, "Error listening for interrupt: %d", ret);
-			
 			libusb_close(handle);
-			libusb_exit(ctx);
-			closelog();
-			cleanup();
 			return 1;
 		}
 	}
 
 	libusb_close(handle);
-	libusb_exit(ctx);
 
-	syslog(LOG_ERR, "Exiting");
-
-	closelog();
-	cleanup();
 	return 0;
 }
 
