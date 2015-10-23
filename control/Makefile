@@ -18,6 +18,7 @@ install: casecontrol
 	@mkdir -p ${CONFDIR}
 	@mkdir -p ${RUNDIR}
 	@mkdir -p ${BINDIR}
+	@mkdir -p ${INITDIR}
 	@mkdir -p ${CONFDIR}/switch0.d
 	@cp switch0.d/* ${CONFDIR}/switch0.d
 	@mkdir -p ${CONFDIR}/led0.d
