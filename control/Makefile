@@ -6,6 +6,11 @@ CC=gcc
 CFLAGS=-Wall -lusb-1.0 -I include -DCASECONTROL_PREFIX=\"${CONFDIR}\" -DCASECONTROL_RUNDIR=\"${RUNDIR}\"
 SOURCES=casecontrol.c
 
+all: casecontrol
+
+debug: CFLAGS += -DDEBUG -ggdb
+debug: casecontrol
+
 casecontrol: $(SOURCES)
 	$(CC) -o casecontrol $(SOURCES) $(CFLAGS)
 
