@@ -209,11 +209,11 @@ daemonise()
 		syslog(LOG_INFO, "Daemon PID: %d", pid);
 
 		if((fd = open(CASECONTROL_PID_FILE, O_CREAT | O_WRONLY, 00444)) == -1)
-			syslog(LOG_ERR, "open(): %m");
+			syslog(LOG_ERR, "open(%s): %m", CASECONTROL_PID_FILE);
 
 		len = snprintf(buf, 9, "%d", pid);
 		if(write(fd, buf, len) == -1)
-			syslog(LOG_ERR, "write(): %m");
+			syslog(LOG_ERR, "write(%s): %m", CASECONTROL_PID_FILE);
 		close(fd); 
 
 		closelog();
