@@ -25,7 +25,7 @@ BINNAME=casecontrol
 if [ -f "${RUNDIR}/pid" ];
 then
 	PID=`cat ${RUNDIR}/pid`
-	PROCS=`ps -p ${PID} -h | grep ${BINDIR}/${BINNAME}`
+	PROCS=`ps -p ${PID} -h | grep ${BINNAME}`
 fi
 
 case "$1" in
