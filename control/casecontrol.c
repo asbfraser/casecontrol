@@ -494,6 +494,18 @@ get_ep_addr(libusb_device *dev)
 	return ep_addr;
 }
 
+static int
+script_filter(const struct dirent *dir)
+{
+	if(dir == NULL || dir->d_name == NULL)
+		return 0;
+
+	if(isdigit(dir->d_name[0]))
+		return 1;
+	else
+		return 0;
+}
+
 void
 call_scripts(char *script_dir, unsigned char value)
 {
@@ -509,7 +521,7 @@ call_scripts(char *script_dir, unsigned char value)
 	else
 		snprintf(val_str, 2, "1");
 
-	if((num_dirs = scandir(script_dir, &dirs, NULL, alphasort)) == -1)
+	if((num_dirs = scandir(script_dir, &dirs, script_filter, alphasort)) == -1)
 	{
 		syslog(LOG_ERR, "scandir(%s): %s", script_dir, strerror(errno));
 		return;
