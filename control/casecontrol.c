@@ -21,7 +21,6 @@ static int status_len = 3;
 
 static unsigned char req_status[] = { 0, 0 };
 static char alive = 1;
-static char started = 0;
 
 int
 main(int argc, char *argv[])
@@ -79,6 +78,11 @@ main(int argc, char *argv[])
 		{
 			sleep(5);
 		}
+		else if(ret == -3)
+		{
+			syslog(LOG_ERR, "Device disconnected");
+			sleep(5);
+		}
 	}
 	while(alive);
 
@@ -100,7 +104,7 @@ connect_device(libusb_context *ctx)
 	int i, ret = 0;
 	ssize_t count;
 
-	int transferred = 0;
+	int transferred = 0, disconnected = 0;
 
 	if((count = libusb_get_device_list(ctx, &devs)) < 0)
 	{
@@ -110,8 +114,14 @@ connect_device(libusb_context *ctx)
 
 	for(i = 0; i < count; ++i)
 	{
-		if(device_matches(devs[i], &handle) != 0)
+		if((ret = device_matches(devs[i], &handle)) == 1)
+		{
 			continue;
+		}
+		else if(ret == -1)
+		{
+			break;
+		}
 
 		if((ret = control_transfer_test(handle)) == -1)
 		{
@@ -125,6 +135,13 @@ connect_device(libusb_context *ctx)
 			handle = NULL;
 			continue;
 		}
+		else if(ret == -2)
+		{
+			libusb_close(handle);
+			handle = NULL;
+			disconnected = 1;
+			break;
+		}
 
 		if((ep_addr = get_ep_addr(devs[i])) == -1)
 		{
@@ -137,21 +154,23 @@ connect_device(libusb_context *ctx)
 
 	libusb_free_device_list(devs, 1);
 
+	if(disconnected)
+	{
+		return -3;
+	}
+
 	if(handle == NULL)
 	{
-		if(started == 0)
-			syslog(LOG_ERR, "No compatible devices found");
-		started = 1;
 		return -2;
 	}
 
-	syslog(LOG_INFO, "Compatible device found!");
-	started = 1;
+	syslog(LOG_INFO, "Device connected");
 
-	if(control_transfer_get(handle, status, status_len) != 0)
+	if((ret = control_transfer_get(handle, status, status_len)) != 0)
 	{
 		libusb_close(handle);
-		return -1;
+
+		return -3;
 	}
 
 	req_status[0] = status[1];
@@ -173,15 +192,14 @@ connect_device(libusb_context *ctx)
 			continue;
 		else if(ret == LIBUSB_ERROR_NO_DEVICE)
 		{
-			syslog(LOG_INFO, "Device disconnected");
 			libusb_close(handle);
-			return -2;
+			return -3;
 		}
 		else
 		{
 			syslog(LOG_ERR, "Error listening for interrupt: %d", ret);
 			libusb_close(handle);
-			return 1;
+			return -3;
 		}
 	}
 
@@ -257,14 +275,14 @@ device_matches(libusb_device *dev, libusb_device_handle **handle)
 	int ret;
 
 	if(dev == NULL || handle == NULL)
-		return 1;
+		return -1;
 
 	*handle = NULL;
 
 	if((ret = libusb_get_device_descriptor(dev, &desc)) != 0)
 	{
 		syslog(LOG_ERR, "Error getting device descriptor: %d", ret);
-		return 1;
+		return -1;
 	}
 
 	if(desc.idVendor != CASECONTROL_VID || desc.idProduct != CASECONTROL_PID)
@@ -274,7 +292,7 @@ device_matches(libusb_device *dev, libusb_device_handle **handle)
 	{
 		syslog(LOG_ERR, "Error opening device: %d", ret);
 		*handle = NULL;
-		return 1;
+		return -1;
 	}
 
 	if((ret = libusb_kernel_driver_active(*handle, 0)) != 0)
@@ -288,7 +306,7 @@ device_matches(libusb_device *dev, libusb_device_handle **handle)
 				syslog(LOG_ERR, "Error detaching kernel driver: %d", ret);
 				libusb_close(*handle);
 				*handle = NULL;
-				return 1;
+				return -1;
 			}
 		}
 		else
@@ -296,8 +314,16 @@ device_matches(libusb_device *dev, libusb_device_handle **handle)
 			syslog(LOG_ERR, "Error checking if kernel driver is attached: %d", ret);
 			libusb_close(*handle);
 			*handle = NULL;
-			return 1;
+			return -1;
 		}
+	}
+
+	if((ret = libusb_claim_interface(*handle, 0)) != 0)
+	{
+		syslog(LOG_ERR, "Error claiming interface: %d", ret);
+		libusb_close(*handle);
+		*handle = NULL;
+		return -1;
 	}
 
 	return 0;
@@ -314,6 +340,10 @@ control_transfer_test(libusb_device_handle *handle)
 
 	if((len = libusb_control_transfer(handle, CASECONTROL_REQUESTTYPE, CASECONTROL_RQ_TEST, 0, 0, buf, test_msg_len, 0)) < 0)
 	{
+		if(len == LIBUSB_ERROR_NO_DEVICE)
+		{
+			return -2;
+		}
 		syslog(LOG_ERR, "Error making control transfer: %d", len);
 		return -1;
 	}
@@ -336,6 +366,9 @@ control_transfer_get(libusb_device_handle *handle, unsigned char *buf, int buf_l
 
 	if((len = libusb_control_transfer(handle, CASECONTROL_REQUESTTYPE, CASECONTROL_RQ_GET, 0, 0, buf, buf_len, 0)) < 0)
 	{
+		if(len == LIBUSB_ERROR_NO_DEVICE)
+			return -3;
+
 		syslog(LOG_ERR, "Error making control transfer: %d", len);
 		return -1;
 	}
