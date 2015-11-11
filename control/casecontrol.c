@@ -10,6 +10,7 @@ int connect_device(libusb_context *ctx);
 int daemonise();
 void cleanup();
 void sig_handler(int signo);
+static void write_status();
 void call_scripts(char *script_dir, unsigned char value);
 
 static const char test_msg[] = { 0xde, 0xad, 0xbe };
@@ -21,6 +22,7 @@ static int status_len = 3;
 
 static unsigned char req_status[] = { 0, 0 };
 static char alive = 1;
+static char print_status = 0;
 
 int
 main(int argc, char *argv[])
@@ -53,6 +55,13 @@ main(int argc, char *argv[])
 	if(signal(SIGUSR2, sig_handler) == SIG_ERR)
 	{
 		syslog(LOG_ERR, "Error installing signal handler for SIGUSR1: %s", strerror(errno));
+		closelog();
+		cleanup();
+		return 1;
+	}
+	if(signal(SIGHUP, sig_handler) == SIG_ERR)
+	{
+		syslog(LOG_ERR, "Error installing signal handler for SIGHUP: %s", strerror(errno));
 		closelog();
 		cleanup();
 		return 1;
@@ -180,6 +189,20 @@ connect_device(libusb_context *ctx)
 
 	while(alive)
 	{
+		if(print_status == 1)
+		{
+			print_status = 0;
+
+			if((ret = control_transfer_get(handle, status, status_len)) != 0)
+			{
+				libusb_close(handle);
+
+				return -3;
+			}
+
+			write_status();
+		}
+
 		if(req_status[0] != status[1])
 			control_transfer_set(handle, 0, req_status[0]);
 		if(req_status[1] != status[2])
@@ -450,6 +473,11 @@ sig_handler(int signo)
 		alive = 0;
 		return;
 	}
+	else if(signo == SIGHUP)
+	{
+		print_status = 1;
+		return;
+	}
 	else
 		return;
 
@@ -492,6 +520,30 @@ get_ep_addr(libusb_device *dev)
 	libusb_free_config_descriptor(config);
 
 	return ep_addr;
+}
+
+static void
+write_status()
+{
+	FILE *f;
+	char buf[64];
+	int len;
+
+	if((f = fopen(CASECONTROL_STATUS_FILE, "w")) == NULL)
+	{
+		syslog(LOG_ERR, "Error opening status file '%s': %s", CASECONTROL_STATUS_FILE, strerror(errno));
+		return;
+	}
+
+	if((len = snprintf(buf, 64, "SWITCH0: %d\nLED0: %d\nLED1: %d\n", status[0], status[1], status[2])) >= 64)
+	{
+		syslog(LOG_ERR, "Status message too long for buffer");
+		fclose(f);
+		return;
+	}
+	fwrite(buf, 1, len, f);
+
+	fclose(f);
 }
 
 static int

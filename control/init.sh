@@ -60,12 +60,39 @@ force-reload)
 	./$0 start
 	;;
 status)
-	if [ ! -z "${PROCS}" ];
+	if [ -z "${PROCS}" ];
 	then
-		echo "casecontrol is running (PID: ${PID})"
-	else
 		echo "casecontrol is not running"
+		exit 0
 	fi
+
+	echo "casecontrol is running (PID: ${PID})"
+
+	(
+		flock -n 9 || exit 1
+
+		rm -f ${RUNDIR}/status
+		/bin/kill -s SIGHUP ${PID}
+		if [ "$?" -ne 0 ];
+		then
+			echo "Error getting status (1)"
+			exit 1
+		fi
+
+		sleep 2
+
+		if [ ! -e ${RUNDIR}/status ];
+		then
+			echo "Error getting status (2)"
+			exit 1
+		fi
+
+		cat ${RUNDIR}/status
+		rm -f ${RUNDIR}/status
+
+       ) 9>${RUNDIR}/status.lock
+	rm ${RUNDIR}/status.lock
+
 	;;
 led0)
 	if [ -z "${PROCS}" ];
