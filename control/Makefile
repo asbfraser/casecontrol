@@ -24,12 +24,14 @@ install: casecontrol
 	@mkdir -p ${RUNDIR}
 	@mkdir -p ${BINDIR}
 	@mkdir -p ${INITDIR}
+	@mkdir -p ${CONFDIR}/connected.d
+	@cp connected.d/* ${CONFDIR}/connected.d 2>/dev/null || true
 	@mkdir -p ${CONFDIR}/switch0.d
-	@cp switch0.d/* ${CONFDIR}/switch0.d
+	@cp switch0.d/* ${CONFDIR}/switch0.d 2>/dev/null || true
 	@mkdir -p ${CONFDIR}/led0.d
-	@cp led0.d/* ${CONFDIR}/led0.d
+	@cp led0.d/* ${CONFDIR}/led0.d 2>/dev/null || true
 	@mkdir -p ${CONFDIR}/led1.d
-	@cp led1.d/* ${CONFDIR}/led1.d
+	@cp led1.d/* ${CONFDIR}/led1.d 2>/dev/null || true
 	@cp -f casecontrol ${BINDIR}/
 	@cp -f init.sh ${INITDIR}/casecontrol
 

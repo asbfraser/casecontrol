@@ -80,7 +80,8 @@ main(int argc, char *argv[])
 		}
 		else if(ret == -3)
 		{
-			syslog(LOG_ERR, "Device disconnected");
+			syslog(LOG_INFO, "Device disconnected");
+			call_scripts(CASECONTROL_CONNECTED_SCRIPT_DIR, 0);
 			sleep(5);
 		}
 	}
@@ -165,6 +166,7 @@ connect_device(libusb_context *ctx)
 	}
 
 	syslog(LOG_INFO, "Device connected");
+	call_scripts(CASECONTROL_CONNECTED_SCRIPT_DIR, 1);
 
 	if((ret = control_transfer_get(handle, status, status_len)) != 0)
 	{
@@ -204,6 +206,9 @@ connect_device(libusb_context *ctx)
 	}
 
 	libusb_close(handle);
+
+	syslog(LOG_INFO, "Device disconnected");
+	call_scripts(CASECONTROL_CONNECTED_SCRIPT_DIR, 0);
 
 	return 0;
 }
