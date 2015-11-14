@@ -35,6 +35,7 @@ start)
 		echo "casecontrol is already running!"
 		exit 1
 	else
+		mkdir -p ${RUNDIR}
 		${BINDIR}/${BINNAME} || echo "casecontrol failed to start"
 		echo "casecontrol started!"
 	fi
