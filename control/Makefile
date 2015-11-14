@@ -2,6 +2,7 @@ CONFDIR=${PREFIX}/etc/casecontrol
 RUNDIR=${PREFIX}/var/run/casecontrol
 BINDIR=${PREFIX}/usr/local/bin
 INITDIR=${PREFIX}/etc/init.d
+LOGWATCHDIR=${PREFIX}/etc/logwatch
 CC=gcc
 CFLAGS=-Wall -lusb-1.0 -I include -DCASECONTROL_PREFIX=\"${CONFDIR}\" -DCASECONTROL_RUNDIR=\"${RUNDIR}\"
 SOURCES=casecontrol.c
@@ -34,6 +35,8 @@ install: casecontrol
 	@cp led1.d/* ${CONFDIR}/led1.d 2>/dev/null || true
 	@cp -f casecontrol ${BINDIR}/
 	@cp -f init.sh ${INITDIR}/casecontrol
+	@cp logwatch/conf/services/casecontrol.conf ${LOGWATCHDIR}/conf/services/ 2>/dev/null || true
+	@cp logwatch/scripts/services/casecontrol ${LOGWATCHDIR}/scripts/services/ 2>/dev/null || true
 
 .PHONY: remove
 remove:
@@ -41,3 +44,5 @@ remove:
 	@rm -rf ${RUNDIR}
 	@rm -f ${BINDIR}/casecontrol
 	@rm -f ${INITDIR}/casecontrol
+	@rm -f ${LOGWATCHDIR}/conf/services/casecontrol.conf 2>/dev/null || true
+	@rm -f ${LOGWATCHDIR}/scripts/services/casecontrol 2>/dev/null || true

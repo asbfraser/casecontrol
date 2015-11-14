@@ -1,0 +1,135 @@
+#!/usr/bin/perl
+
+use strict;
+##########################################################################
+# $Id: casecontrol,v 1.0 2015/11/14 18:00:00 mike Exp $
+##########################################################################
+
+my $Detail = $ENV{'LOGWATCH_DETAIL_LEVEL'} || 0;
+
+my %data;
+
+my $switch = 0;
+my $led0 = 0;
+my $led1 = 0;
+
+while(my $line = <STDIN>)
+{
+	chomp $line;
+	$line =~ s/^\s+//;
+	$line =~ s/\s+$//;
+	next unless $line;
+
+	if($line =~ /^Device connected$/)
+	{
+		$data{'Device status'}{"Connected"}++;
+	}
+	elsif($line =~ /^Device disconnected$/)
+	{
+		$data{'Device status'}{"Disconnected"}++;
+	}
+	elsif($line =~ /^SWITCH0:\s\d$/)
+	{
+		my ($value) = $line =~ /^SWITCH0:\s(.*)$/;
+
+		if($value == 0)
+		{
+			if($switch == 1)
+			{
+				$data{'Case switch'}{"Deactivated"}++;
+			}
+			$switch = 0;
+		}
+		elsif($value == 1)
+		{
+			if($switch == 0)
+			{
+				$data{'Case switch'}{"Activated"}++;
+			}
+			$switch = 1;
+		}
+	}
+	elsif($line =~ /^LED0:\s\d$/)
+	{
+		my ($value) = $line =~ /^LED0:\s(.*)$/;
+
+		if($value == 0)
+		{
+			if($led0 == 1)
+			{
+				$data{'LED 0'}{"Deactivated"}++;
+			}
+			$led0 = 0;
+		}
+		elsif($value == 1)
+		{
+			if($led0 == 0)
+			{
+				$data{'LED 0'}{"Activated"}++;
+			}
+			$led0 = 1;
+		}
+	}
+	elsif($line =~ /^LED1:\s\d$/)
+	{
+		my ($value) = $line =~ /^LED1:\s(.*)$/;
+
+		if($value == 0)
+		{
+			if($led1 == 1)
+			{
+				$data{'LED 1'}{"Deactivated"}++;
+			}
+			$led1 = 0;
+		}
+		elsif($value == 1)
+		{
+			if($led1 == 0)
+			{
+				$data{'LED 1'}{"Activated"}++;
+			}
+			$led1 = 1;
+		}
+	}
+	elsif($line =~ /^Daemon PID:/)
+	{
+		$data{"Service status"}{"Started"}++;
+	}
+	elsif($line =~ /^Exiting\.\.\.$/)
+	{
+		$data{"Service status"}{"Exited"}++;
+	}
+	elsif($line =~ /^Executed ".*": .*$/)
+	{
+		my ($script, $result) = $line =~ /^Executed "(.*)": (.*)$/;
+
+		$data{"Script $result"}{$script}++;
+	}
+	elsif($line =~ /^Executing/)
+	{
+		next;
+	}
+	else
+	{
+		$data{"Errors"}{$line}++;
+	}
+}
+
+if(keys %data)
+{
+	foreach my $type (sort keys %data)
+	{
+		print "$type:\n";
+		foreach my $entry (sort {$a cmp $b} keys %{$data{$type}}) {
+			print "   $entry: $data{$type}{$entry} Time(s)\n";
+		}
+		print "\n";
+	}
+}
+
+# vi: shiftwidth=3 tabstop=3 syntax=perl et
+# Local Variables:
+# mode: perl
+# perl-indent-level: 3
+# indent-tabs-mode: nil
+# End:
