@@ -1,6 +1,6 @@
 #!/bin/bash
 
-if [ "$1" == "1" ];
+if [ "$1" = "1" ];
 then
 
 PATH=/bin:/usr/bin

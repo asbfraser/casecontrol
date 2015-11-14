@@ -17,7 +17,7 @@
 #############################################################
 
 # Defaults
-PREFIX=/home/afraser/devel/casecontrol/control/test
+PREFIX=
 RUNDIR=${PREFIX}/var/run/casecontrol
 BINDIR=${PREFIX}/usr/local/bin
 BINNAME=casecontrol
